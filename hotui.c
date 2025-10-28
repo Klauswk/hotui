@@ -95,6 +95,15 @@ Window hui_init() {
   return window;
 }
 
+Window hui_create_window(int width, int height, int y, int x) {
+  return (Window) {
+    .width = width,
+    .height = height,
+    .x = x,
+    .y = y,
+  };
+}
+
 void hui_move_cursor_to(int y, int x) {
   y++;
   x++;
@@ -120,3 +129,18 @@ void hui_put_character_at(char c, int y, int x) {
   write(1, &c, 1);
 }
 
+/*
+ * We assume 0 based index 
+ */
+void hui_put_text_at_window(Window window, char* c, size_t size, int y, int x) {
+  hui_move_cursor_to(window.y + y, window.x + x);
+  write(1, c, size);
+}
+
+/*
+ * We assume 0 based index 
+ */
+void hui_put_character_at_window(Window window, char c, int y, int x) {
+  hui_move_cursor_to(window.y + y, window.x + x);
+  write(1, &c, 1);
+}
