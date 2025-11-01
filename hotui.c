@@ -15,13 +15,47 @@ static struct termios initial;
 static uint16_t terminal_width;
 static uint16_t terminal_height;
 
+typedef enum {
+  NONE,
+  RESIZE,
+} Hui_Event;
+
+#define EVENT_QUEUE_SIZE 256
+static Hui_Event hui_event_queue[EVENT_QUEUE_SIZE];
+static size_t hui_event_cursor_write_index = 0;
+static size_t hui_event_cursor_read_index = 0;
+
+static void push_event(Hui_Event event) {
+  if (hui_event_cursor_write_index >= EVENT_QUEUE_SIZE) {
+    hui_event_cursor_write_index = 0;
+  }
+
+  hui_event_queue[hui_event_cursor_write_index++] = event;
+
+  if (hui_event_cursor_write_index == hui_event_cursor_read_index) {
+    hui_event_cursor_read_index++;
+  }
+}
+
+Hui_Event hui_poll_event() {
+  if (hui_event_cursor_read_index >= EVENT_QUEUE_SIZE) {
+    hui_event_cursor_read_index = 0;
+  }
+
+  if (hui_event_cursor_write_index == hui_event_cursor_read_index) {
+    return NONE;
+  } 
+
+  return hui_event_queue[hui_event_cursor_read_index++];
+}
 
 static void hui_resize(int i) {
   (void)i;
-	struct winsize ws;
-	ioctl(1, TIOCGWINSZ, &ws);
-	terminal_width = ws.ws_col;
-	terminal_height = ws.ws_row;
+  struct winsize ws;
+  ioctl(1, TIOCGWINSZ, &ws);
+  terminal_width = ws.ws_col;
+  terminal_height = ws.ws_row;
+  push_event(RESIZE);
 }
 
 void hui_print_sz(char* string, size_t size) {
@@ -95,6 +129,11 @@ Window hui_init() {
   return window;
 }
 
+void hui_set_window_size(Window* window) {
+  window->height = terminal_height;
+  window->width = terminal_width;
+}
+
 Window hui_create_window(int width, int height, int y, int x) {
   return (Window) {
     .width = width,
@@ -132,8 +171,10 @@ void hui_put_character_at(char c, int y, int x) {
 /*
  * We assume 0 based index 
  */
-void hui_put_text_at_window(Window window, char* c, size_t size, int y, int x) {
-  if (window.y + y < window.height && window.x + x < window.width) {
+void hui_put_text_at_window(Window window, char* c, size_t size, size_t y, size_t x) {
+  int within_y_boundaries = y >= window.y && y < window.y + window.height;
+  int within_x_boundaries = x >= window.x && x < window.x + window.width;
+  if (within_x_boundaries && within_y_boundaries) {
     hui_move_cursor_to(window.y + y, window.x + x);
     write(1, c, size);
   }
@@ -142,9 +183,26 @@ void hui_put_text_at_window(Window window, char* c, size_t size, int y, int x) {
 /*
  * We assume 0 based index 
  */
-void hui_put_character_at_window(Window window, char c, int y, int x) {
-  if (window.y + y <= window.height && window.x + x <= window.width) {
+void hui_put_character_at_window(Window window, char c, size_t y, size_t x) {
+  int within_y_boundaries = y >= window.y && y < window.y + window.height;
+  int within_x_boundaries = x >= window.x && x < window.x + window.width;
+  if (within_x_boundaries && within_y_boundaries) {
     hui_move_cursor_to(window.y + y, window.x + x);
     write(1, &c, 1);
+  }
+}
+
+void hui_draw_border_at_window(Window window) {
+  for (size_t i = 0; i < window.width; i++) {
+    hui_put_character_at_window(window, '*', 0, i);
+  }
+
+  for (size_t i = 1; i < window.height - 1; i++) {
+    hui_put_character_at_window(window, '*', i, 0);
+    hui_put_character_at_window(window, '*', i, window.width - 1);
+  }
+
+  for (size_t i = 0; i < window.width; i++) {
+    hui_put_character_at_window(window, '*', window.height - 1, i);
   }
 }
