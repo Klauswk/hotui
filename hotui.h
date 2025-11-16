@@ -12,12 +12,14 @@
 #include <stdlib.h>
 #include <signal.h>
 
+// ----------------------------------------------------
+// Hui_Window
 typedef enum {
   NONE,
   RESIZE,
 } Hui_Event;
 
-typedef struct Hui_Window {
+typedef struct {
   size_t width;
   size_t height;
   size_t x;
@@ -38,6 +40,28 @@ void hui_put_character_at(char c, int y, int x);
 void hui_put_text_at_window(Hui_Window window, char* c, size_t size, size_t y, size_t x);
 void hui_put_character_at_window(Hui_Window window, char c, size_t y, size_t x);
 void hui_draw_border_at_window(Hui_Window window);
+
+// ----------------------------------------------------
+// Hui_Input
+
+typedef struct {
+  size_t width;
+  size_t height;
+  size_t x;
+  size_t y;
+  char* buffer;
+  size_t capacity;
+  size_t cursor;
+  size_t input_on;
+} Hui_Input;
+
+Hui_Input hui_create_input_window(int width, int height, int y, int x);
+int hui_input_reserve(Hui_Input* input, size_t expected_capacity);
+void hui_draw_input_window(Hui_Input input);
+int hui_input_pop_char(Hui_Input* input);
+int hui_input_accept(Hui_Input* input, char c);
+int hui_input_push_char(Hui_Input* input, char c);
+
 #endif // HOTUI_H_
 
 #ifdef HOTUI_IMPLEMENTATION
@@ -193,8 +217,9 @@ void hui_put_character_at(char c, int y, int x) {
  * We assume 0 based index 
  */
 void hui_put_text_at_window(Hui_Window window, char* c, size_t size, size_t y, size_t x) {
-  int within_y_boundaries = y >= window.y && y < window.y + window.height;
-  int within_x_boundaries = x >= window.x && x < window.x + window.width;
+  int within_y_boundaries = y < window.y + window.height;
+  int within_x_boundaries = x < window.x + window.width;
+
   if (within_x_boundaries && within_y_boundaries) {
     hui_move_cursor_to(window.y + y, window.x + x);
     write(1, c, size);
@@ -225,6 +250,86 @@ void hui_draw_border_at_window(Hui_Window window) {
 
   for (size_t i = 0; i < window.width; i++) {
     hui_put_character_at_window(window, '*', window.height - 1, i);
+  }
+}
+
+int hui_input_reserve(Hui_Input* input, size_t expected_capacity) {
+  size_t capacity = input->capacity;
+  if (expected_capacity > capacity) {
+    if (capacity == 0) {
+       capacity = 10;
+    }
+    while(expected_capacity >= capacity) {
+      capacity *= 2;
+    }
+
+    void* result = realloc(input->buffer, (capacity * sizeof(char)));
+
+    if (result) {
+      input->capacity = capacity;
+      input->buffer = result;
+      return 1;
+    }
+
+    return 0;
+  }
+  return 1;
+}
+
+Hui_Input hui_create_input_window(int width, int height, int y, int x) {
+  Hui_Input input = (Hui_Input) {
+    .width = width,
+    .height = height,
+    .y = y,
+    .x = x,
+    .buffer = 0,
+    .capacity = 0,
+    .cursor = 0,
+    .input_on = 0,
+  };
+
+  return input;
+}
+
+/*
+ * Return > 0 if char consumed
+ */
+int hui_input_push_char(Hui_Input* input, char c) {
+  if (hui_input_reserve(input, input->cursor + 1)) {
+    input->buffer[input->cursor++] = c;
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Return > 0 if char consumed
+ */
+int hui_input_accept(Hui_Input* input, char c) {
+  if (input->input_on) {
+     return hui_input_push_char(input, c);
+  }
+  return 0;
+}
+
+/*
+ * Return > 0 if char pop 
+ */
+int hui_input_pop_char(Hui_Input* input) {
+  if (input->cursor > 0) {
+    input->cursor--; 
+    return 1;
+  }
+  return 0;
+}
+
+void hui_draw_input_window(Hui_Input input) {
+  Hui_Window win = *((Hui_Window *) &input);
+  if (input.input_on) {
+    hui_put_text_at_window(win, "/", 1, 0, 0);
+  };
+  if (input.cursor > 0) {
+    hui_put_text_at_window(win, input.buffer, input.cursor, 0, 1);
   }
 }
 
