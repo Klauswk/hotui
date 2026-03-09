@@ -71,7 +71,7 @@ typedef struct {
   size_t focus;
 } Hui_Input;
 
-//A dynamic array + a window, 
+//A dynamic array + a window,
 Hui_Input hui_create_input_window(uint64_t width, uint64_t height, uint64_t y, uint64_t x);
 void hui_draw_input_window(Hui_Input input);
 int64_t hui_input_pop_char(Hui_Input* input);
@@ -117,7 +117,7 @@ Hui_Event hui_poll_event() {
 
   if (hui_event_cursor_write_index == hui_event_cursor_read_index) {
     return NONE;
-  } 
+  }
 
   return hui_event_queue[hui_event_cursor_read_index++];
 }
@@ -158,7 +158,7 @@ static void hui_resize(int i) {
 
 
 void hui_print_sz(char* string, size_t size) {
- write(output_fd, string, size); 
+ write(output_fd, string, size);
 }
 
 void hui_print(char* string) {
@@ -203,9 +203,9 @@ Hui_Window hui_init() {
 	tcsetattr(1, TCSANOW, &term);
   output_fd = 1;
   hui_resize(0);
-  
+
   char* enter_alternate_buffer = "\x1b[?1049h";
-  
+
   hui_print(enter_alternate_buffer);
 
   char* clean_buffer = "\x1b]2J";
@@ -213,6 +213,9 @@ Hui_Window hui_init() {
 
   char* hide_cursor = "\x1b[?25l";
   hui_print(hide_cursor);
+
+  char* move_cursor_to_top = "\x1b[H";
+  hui_print(move_cursor_to_top);
 
   Hui_Window window = {
     .width = terminal_width,
@@ -243,11 +246,11 @@ void hui_move_cursor_to(uint64_t y, uint64_t x) {
   x++;
   char buffer[50];
   sprintf(buffer, "\x1b[%"PRIu64";%"PRIu64"H", y, x);
-  hui_print(buffer); 
+  hui_print(buffer);
 }
 
 /*
- * We assume 0 based index 
+ * We assume 0 based index
  */
 void hui_put_text_at(char* c, size_t size, uint64_t y, uint64_t x) {
   if (buffering) {
@@ -260,9 +263,9 @@ void hui_put_text_at(char* c, size_t size, uint64_t y, uint64_t x) {
     static uint8_t background = 49;
     char* start_chunk = 0;
     char* end_chunk = 0;
-    
+
     for (size_t i = 0; i < size; i++) {
-      if (c[i] == '\x1b' && c[i+1] == '[') {
+      if (c[i] == '\x1b' && i+1 < size && c[i+1] == '[') {
         ansi_escape = 1;
         skip=+2;
         start_chunk = &c[i+2];
@@ -272,21 +275,27 @@ void hui_put_text_at(char* c, size_t size, uint64_t y, uint64_t x) {
         ansi_escape = 0;
         skip++;
         end_chunk = &c[i-1];
-        
+
         long escape_value = strtol(start_chunk, &end_chunk, 0);
-        
+
         //A problem happened when trying to process the escape code
         if (escape_value == 0 && errno) {
          assert(0 && "Error processing the escape code");
         } else if (escape_value == 0) {
-          foreground = 39; 
+          foreground = 39;
           background = 49;
         } else if (escape_value) {
           if (escape_value > 29 && escape_value < 40) foreground = (uint8_t) escape_value;
           if (escape_value > 39 && escape_value < 50) background = (uint8_t) escape_value;
-        } 
-        
+        }
+
         continue;
+      }
+      //Screen modes, we don't really care
+      else if (ansi_escape && c[i] == 'h') {
+        ansi_escape = 0;
+        skip++;
+        end_chunk = &c[i-1];
       } else if (ansi_escape) {
         skip++;
         continue;
@@ -304,7 +313,7 @@ void hui_put_text_at(char* c, size_t size, uint64_t y, uint64_t x) {
 }
 
 /*
- * We assume 0 based index 
+ * We assume 0 based index
  */
 void hui_put_character_at(char c, uint64_t y, uint64_t x) {
   if (buffering) {
@@ -317,7 +326,7 @@ void hui_put_character_at(char c, uint64_t y, uint64_t x) {
 }
 
 /*
- * We assume 0 based index 
+ * We assume 0 based index
  */
 void hui_put_text_at_window(Hui_Window window, char* c, size_t size, size_t y, size_t x) {
   int within_y_boundaries = y < window.y + window.height;
@@ -329,7 +338,7 @@ void hui_put_text_at_window(Hui_Window window, char* c, size_t size, size_t y, s
 }
 
 /*
- * We assume 0 based index 
+ * We assume 0 based index
  */
 void hui_put_character_at_window(Hui_Window window, char c, size_t y, size_t x) {
   int within_y_boundaries = y >= window.y && y < window.y + window.height;
@@ -339,7 +348,7 @@ void hui_put_character_at_window(Hui_Window window, char c, size_t y, size_t x) 
   }
 }
 
-static int64_t hui_reserve(char** buffer, size_t* capacity, size_t expected_capacity) 
+static int64_t hui_reserve(char** buffer, size_t* capacity, size_t expected_capacity)
 {
   if (expected_capacity > *capacity) {
     if (*capacity == 0) {
@@ -360,7 +369,7 @@ static int64_t hui_reserve(char** buffer, size_t* capacity, size_t expected_capa
   return 1;
 }
 
-static int64_t hui_append_to(char** buffer, size_t* capacity, size_t* size, const char* append, size_t append_size) 
+static int64_t hui_append_to(char** buffer, size_t* capacity, size_t* size, const char* append, size_t append_size)
 {
   hui_reserve(buffer, capacity, *size + append_size);
   int offset = *size;
@@ -408,11 +417,11 @@ int64_t hui_input_accept(Hui_Input* input, char c) {
 }
 
 /*
- * Return > 0 if char pop 
+ * Return > 0 if char pop
  */
 int64_t hui_input_pop_char(Hui_Input* input) {
   if (input->cursor > 0) {
-    input->cursor--; 
+    input->cursor--;
     return 1;
   }
   return 0;
@@ -421,8 +430,16 @@ int64_t hui_input_pop_char(Hui_Input* input) {
 void hui_draw_input_window(Hui_Input input) {
   Hui_Window win = *((Hui_Window *) &input);
   if (input.focus) {
+    char buffer[256] = {0};
+    sprintf(buffer, "\x1b[%"PRIu64";%"PRIu64"H", input.y, input.x);
+    hui_print(buffer);
+    hui_print("\x1b[?25h");
     hui_put_text_at_window(win, "/", 1, 0, 0);
-  };
+  } else {
+    char buffer[256] = {0};
+    hui_print(buffer);
+    hui_print("\x1b[?25l");
+  }
   if (input.cursor > 0) {
     hui_put_text_at_window(win, input.buffer, input.cursor, 0, 1);
   }
@@ -437,18 +454,18 @@ static void init_double_buffering()
     scr_buf[curr_buff].foreground = malloc(screen_size * sizeof(uint8_t));
     scr_buf[curr_buff].background = malloc(screen_size * sizeof(uint8_t));
 
-    memset(scr_buf[curr_buff].buffer, ' ', screen_size * sizeof(char)); 
-    memset(scr_buf[curr_buff].foreground, 39, screen_size * sizeof(uint8_t)); 
-    memset(scr_buf[curr_buff].background, 49, screen_size * sizeof(uint8_t)); 
+    memset(scr_buf[curr_buff].buffer, ' ', screen_size * sizeof(char));
+    memset(scr_buf[curr_buff].foreground, 39, screen_size * sizeof(uint8_t));
+    memset(scr_buf[curr_buff].background, 49, screen_size * sizeof(uint8_t));
 
     scr_buf[!curr_buff].size = screen_size;
     scr_buf[!curr_buff].buffer = malloc(screen_size * sizeof(char));
     scr_buf[!curr_buff].foreground = malloc(screen_size * sizeof(uint8_t));
     scr_buf[!curr_buff].background = malloc(screen_size * sizeof(uint8_t));
 
-    memset(scr_buf[!curr_buff].buffer, ' ', screen_size * sizeof(char)); 
-    memset(scr_buf[!curr_buff].foreground, 39, screen_size * sizeof(uint8_t)); 
-    memset(scr_buf[!curr_buff].background, 49, screen_size * sizeof(uint8_t)); 
+    memset(scr_buf[!curr_buff].buffer, ' ', screen_size * sizeof(char));
+    memset(scr_buf[!curr_buff].foreground, 39, screen_size * sizeof(uint8_t));
+    memset(scr_buf[!curr_buff].background, 49, screen_size * sizeof(uint8_t));
   }
 }
 
@@ -461,6 +478,8 @@ int64_t hui_use_retain_mode() {
 }
 
 void start_drawing() {
+  if (!buffering) return;
+
   Screen_Buffer* screen_buffer = &scr_buf[curr_buff];
   size_t screen_size = terminal_width * terminal_height;
   screen_buffer->size = screen_size;
@@ -470,9 +489,9 @@ void start_drawing() {
     screen_buffer->background = malloc(screen_size * sizeof(uint8_t));
   }
 
-  memset(screen_buffer->buffer, ' ', screen_size * sizeof(char)); 
-  memset(screen_buffer->foreground, 39, screen_size * sizeof(uint8_t)); 
-  memset(screen_buffer->background, 49, screen_size * sizeof(uint8_t)); 
+  memset(screen_buffer->buffer, ' ', screen_size * sizeof(char));
+  memset(screen_buffer->foreground, 39, screen_size * sizeof(uint8_t));
+  memset(screen_buffer->background, 49, screen_size * sizeof(uint8_t));
 }
 
 static struct {
@@ -482,6 +501,7 @@ static struct {
 } patches_buffer = {0};
 
 void end_drawing() {
+  if (!buffering) return;
   //Latest display, the one about to be draw
   Screen_Buffer* screen_buffer = &scr_buf[curr_buff];
 
